@@ -70,20 +70,19 @@ if (!strlen($license_key)) // we have no saved key? so we need to ask it and ver
 
 // now second, optional stage - check activation and binding of application
 $activation_cache = trim(file_get_contents(DATA_DIR . '/activation-cache.txt'));
+$prev_activation_cache = $activation_cache; // store previous value to detect change
 $checker = new Am_LicenseChecker($license_key, API_URL);
-if (empty($activation_cache))
-{
-    $checker->activate($activation_cache);
-}
 $ret = empty($activation_cache) ?
            $checker->activate($activation_cache) : // explictly bind license to new installation
            $checker->checkActivation($activation_cache); // just check activation for subscription expriation, etc.
+           
 // in any case we need to store results to avoid repeative calls to remote api
-file_put_contents(DATA_DIR . '/activation-cache.txt', $activation_cache);
+if ($prev_activation_cache != $activation_cache)
+    file_put_contents(DATA_DIR . '/activation-cache.txt', $activation_cache);
 
 if (!$ret)
     exit("Activation failed: (" . $checker->getCode() . ') ' . $checker->getMessage());
 
 /// now your script may continue and do normal functionality
 /// in this case it will be traditional code :)
-echo "Hello World! I am a licensed and activated script, and I'm ready to do my job.<br />";
+echo "<h1>Hello World!</h1><p>I am a licensed and activated script, and I'm ready to do my job.</p>";
