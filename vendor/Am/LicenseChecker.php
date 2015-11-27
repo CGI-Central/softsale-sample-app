@@ -424,7 +424,7 @@ class Am_LicenseChecker
         }
         if (($body = curl_exec($ch)) === false)
         {
-            return array($status, $body, curl_errno($ch) . ':' . curl_error($ch));
+            return array($body, $status, curl_errno($ch) . ':' . curl_error($ch));
         }
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         return array($body, $status, '');
