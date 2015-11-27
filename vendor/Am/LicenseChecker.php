@@ -427,7 +427,7 @@ class Am_LicenseChecker
             return array($status, $body, curl_errno($ch) . ':' . curl_error($ch));
         }
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        return array($status, $body, '');
+        return array($body, $status, '');
     }
     function openUrlFopen($method, $url, $params)
     {
