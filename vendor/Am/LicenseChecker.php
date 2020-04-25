@@ -1,38 +1,36 @@
 <?php
 /**
  * This class you may include into your PHP application to check licenses and
- * handle activations. 
- * 
+ * handle activations.
+ *
  * @example
  *    // Script that handles user-submitted license key and makes activation
  *    // it is recommended to replace filesystem calls to database calls
- *    $checker = new Am_LicenseChecker($GET['license_key']);
+ *    $checker = new Am_LicenseChecker($_GET['license_key']);
  *    if ($checker->checkLicenseKey())
  *    {
- *        file_put_contents('license_key.php', $GET['license_key']));
+ *        file_put_contents('license_key.php', $_GET['license_key']));
  *    } else {
  *        echo "<html><body><h4>License key incorrect</h4>";
  *        echo "Error #" . $checker->getCode() . ' : ' . $checker->getMessage() . "<br />";
  *        echo "<form method=get><input name=license_key><input type=submit></form></body></html>";
  *    }
- * 
+ *
  *     // Using activation and "call-home" functionality
  *     $checker = new Am_LicenseChecker(file_get_contents('license_key.php'));
  *     $local_activation_cache = file_get_contents('activation_cache.php');
  *     $checker->checkActivation($local_activation_cache);
  *     file_put_contents('activation_cache.php', $local_activation_cache);
  *     if ($checker->getCode() <= 0) {
- *          // OK, activation succesful or we are inside grace period 
+ *          // OK, activation succesful or we are inside grace period
  *     } else {
- *          // got problems 
+ *          // got problems
  *          echo "<html><body><h4>Activation Problem - is your subscription expired?</h4>";
  *          echo "Error #" . $checker->getCode() . ' : ' . $checker->getMessage() . "<br />";
  *     }
  */
-class Am_LicenseChecker 
+class Am_LicenseChecker
 {
-    /** that is how activation cache will be encrypted - CHANGE IT! */
-    private $_local_encryption_key = 'da39a3ee5e6b4b0d3255bfef95601890afd80709';
 
     // successful code
     const OK = 'ok';
@@ -51,8 +49,8 @@ class Am_LicenseChecker
     const ERROR_NO_REACTIVATION_ALLOWED = 'no_reactivation_allowed';
     const ERROR_NO_RESPONSE = 'no_response';
     const ERROR_OTHER = 'other_error';
-    
-    public $messages = array(
+
+    public $messages = [
         self::OK => 'License OK',
         self::CONNECTION_ERROR => 'Could not connect to licensing server - please try again later',
         self::LICENSE_EMPTY => 'Empty or invalid license key submitted',
@@ -67,7 +65,7 @@ class Am_LicenseChecker
         self::ERROR_NO_REACTIVATION_ALLOWED => 'Re-activation is not allowed',
         self::ERROR_NO_RESPONSE => 'Internal problem on activation server',
         self::ERROR_OTHER => 'Error returned from activation server',
-    );
+    ];
 
     protected $api_version = 1;
     /** @var int last code returned from */
@@ -79,10 +77,10 @@ class Am_LicenseChecker
     /** @var string activation url */
     protected $url;
     /** @var int call home every .. days, 0 - disabled */
-    protected $call_home_days =  1 ;
+    protected $call_home_days =  2 ;
     /** @var int grace period .. hours, 24 - default. if "call home" failed, allow to continue */
-    protected $grace_period = 2;
-    /** @var array request_vars: set of 
+    protected $grace_period = 24;
+    /** @var array request_vars: set of
      *          'ip' : 'Server IP' : detected automatically by getServerIp() method
      *          'url' : 'Installation URL' : you must override getRootUrl() method to return it
      *          'domain' : 'Domain' : detected automatically by getDomain() method
@@ -91,36 +89,40 @@ class Am_LicenseChecker
      *  */
     protected $request_vars = array (  0 => 'ip',);
     /** @var array() */
-    public $openurl_callbacks = array( // fsockopen, curl, fopen
-        array('this', 'openUrlFsockopen'),
-        array('this', 'openUrlCurl'),
-        array('this', 'openUrlFopen'),
-    );
+    public $openurl_callbacks = [ // fsockopen, curl, fopen
+        ['this', 'openUrlFsockopen'],
+        ['this', 'openUrlCurl'],
+        ['this', 'openUrlFopen'],
+    ];
     /** @var stdclass */
     public $license_response;
     /** @var Am_LicenseChecker_ActivationResponse */
     public $activation_response;
     /** @var array cache */
     protected $_request;
-    
+
     /**
      * Constructor
      * @param string $key license key value
      * @param string $url activation url
+     * @param string $encryption_key random key used for encryption ( that is how activation cache will be encrypted )
+     * @param string|array $hash verification hash
      */
-    public function __construct($key, $url) 
+    public function __construct($key, $url, $encryption_key, $hash="")
     {
         $this->key = $key;
         $this->url = $url;
+		$this->_local_encryption_key=$encryption_key;
+        $this->hash = $hash;
     }
-    
+
     function setError($code, $message = null)
     {
         $this->code = $code;
         $this->message = $message !== null ? $message : $this->messages[$code];
         return $this;
     }
-    /** 
+    /**
      * Check license key against remote server
      * @return bool true of success
      * @see getCode()
@@ -128,16 +130,15 @@ class Am_LicenseChecker
      */
     function checkLicenseKey()
     {
-        $body = $this->makeRequest('GET', 'check-license', 
-                array( 'key' => $this->key,), 
+        $body = $this->makeRequest('GET', 'check-license',
+                ['key' => $this->key,],
                 self::LICENSE_SERVER_ERROR);
-        
+
         $this->license_response = $body;
-        $this->setError($body->code);
 
         return $this->code === self::OK;
     }
-    
+
     /**
      * Activate license for this installation
      * @param string $activation_cache must be stored between requests
@@ -148,17 +149,17 @@ class Am_LicenseChecker
         $request = $this->getRequest();
 
         $this->activation_response = $this->processActivationResponse(
-                $this->makeRequest('POST', 'activate', 
-                array( 'key' => $this->key, 'request' => $request ), 
+                $this->makeRequest('POST', 'activate',
+                ['key' => $this->key, 'request' => $request],
                 self::ACTIVATION_SERVER_ERROR));
         $activation_cache = $this->encodeResponse($this->activation_response);
         return ($this->code === self::OK);
     }
 
-    /** 
+    /**
      * Check license activation
      * you script need to store $activation_code string somewhere in database
-     * or text file - this variable contains encoded activation and "call home" 
+     * or text file - this variable contains encoded activation and "call home"
      * status
      * @return bool
      * @see getCode()
@@ -182,39 +183,39 @@ class Am_LicenseChecker
         $request = $this->getRequest();
         $ret = false;
         $this->activation_response = $this->processActivationResponse(
-                $this->makeRequest('POST', 'check-activation', 
-                array( 'key' => $this->key, 'request' => $request ), 
+                $this->makeRequest('POST', 'check-activation',
+                ['key' => $this->key, 'request' => $request],
                 self::ACTIVATION_SERVER_ERROR));
         $activation_cache = $this->encodeResponse($this->activation_response);
         return $this->activation_response->return;
     }
-    
-    
+
+
     /**
      * De-activates current installation - frees up license activation
-     * to make new activation somewhere else 
-     * 
+     * to make new activation somewhere else
+     *
      * Server will check if "reactivations" limit is not over
-     * 
+     *
      * Software will stop working on current location
      */
     function deactivate(& $activation_cache)
     {
         $request = $this->getRequest();
 
-        $body = $this->makeRequest('POST', 'deactivate', 
-                array( 'key' => $this->key, 'request' => $request, ), 
+        $body = $this->makeRequest('POST', 'deactivate',
+                ['key' => $this->key, 'request' => $request,],
                 self::ACTIVATION_SERVER_ERROR);
         $activation_cache = null;
         return ($this->code === self::OK);
     }
-    
+
     /** @return string last error message */
     function getMessage()
     {
         return $this->message;
     }
-    
+
     /** @return code last error code */
     function getCode()
     {
@@ -244,7 +245,7 @@ class Am_LicenseChecker
     /**
      * @param stdclass $resp decoded response from the server
      * @param bool $ret return code to set : true if OK
-     * @return \Am_LicenseChecker_ActivationResponse
+     * @return Am_LicenseChecker_ActivationResponse
      */
     protected function processActivationResponse($resp)
     {
@@ -252,7 +253,7 @@ class Am_LicenseChecker
         $response->request = $this->getRequest();
         $response->return = $resp->code == self::OK;
         if ($this->call_home_days > 0)
-            $response->next_check = min($response->next_check, 
+            $response->next_check = min($response->next_check,
                     $this->call_home_days * 3600 * 24);
         switch ($response->code)
         {
@@ -260,7 +261,7 @@ class Am_LicenseChecker
                 break;
             case self::ACTIVATION_SERVER_ERROR:;
             case self::CONNECTION_ERROR:;
-                $response->first_failed = empty($this->activation_response->first_failed) ? 
+                $response->first_failed = empty($this->activation_response->first_failed) ?
                     $this->time() : $this->activation_response->first_failed;
                 if ($response->first_failed < $this->grace_period * 3600)
                 {
@@ -279,9 +280,9 @@ class Am_LicenseChecker
         $response->next_check += $this->time();
         return $response;
     }
-    
+
     /** @return array($body,$status,$errormessage) */
-    function openUrl($method, $url, array $params = array())
+    function openUrl($method, $url, array $params = [])
     {
         $params['api_version'] = $this->api_version;
         foreach ($this->openurl_callbacks as $func)
@@ -292,13 +293,13 @@ class Am_LicenseChecker
             if (is_array($a) && count($a) == 3)
                 return $a;
         }
-        return array(null, 600, 'Could not fetch URL');
+        return [null, 600, 'Could not fetch URL'];
     }
-    
+
     private function decodeResponse($response)
     {
         $ret = new Am_LicenseChecker_ActivationResponse;
-        if (empty($response)) 
+        if (empty($response))
             return $ret;
         $c = new Am_Crypt_Blowfish($this->_local_encryption_key);
         try {
@@ -322,13 +323,13 @@ class Am_LicenseChecker
         }
         return base64_encode($ret);
     }
-    
+
     public function time() { return time(); }
     public function getRequest()
     {
         if (!empty($this->_request))
             return $this->_request;
-        $ret = array();
+        $ret = [];
         foreach ($this->request_vars as $k)
             switch ($k)
             {
@@ -342,7 +343,7 @@ class Am_LicenseChecker
         $this->_request = $ret;
         return $ret;
     }
-    
+
     public function getHardwareId()
     {
         throw new Exception(__METHOD__ . " not implemented - must be implemented by software author");
@@ -363,17 +364,17 @@ class Am_LicenseChecker
     {
         return $_SERVER['HTTP_HOST'];
     }
-    
+
     function openUrlFsockopen($method, $url, $params)
     {
         $status = 500; $errormessage = "connection failed"; $body = "";
         $url_parts = parse_url($url);
         if ($url_parts['scheme'] == 'https')
             $f = fsockopen('ssl://'. $url_parts['host'], 443);
-        else 
+        else
             $f = fsockopen("tcp://" . $url_parts['host'], 80);
         if (!$f)
-            return array($body, $status, $errormessage);
+            return [$body, $status, $errormessage];
         if (strcasecmp('post', $method))
         {
             $query = '?' . http_build_query($params);
@@ -396,7 +397,7 @@ class Am_LicenseChecker
         $headers = trim($headers); $body = trim($body);
         if (preg_match('/^Transfer-Encoding:\s+chunked/m', $headers))
         {
-            $body = preg_replace('/[a-eA-E0-9]+\n(.+)0(\n)?/ms', '\\1', $body);
+            $body = preg_replace('/[a-fA-F0-9]+\n(.+)0(\n)?/ms', '\\1', $body);
         }
         if (preg_match('/^HTTP\/1\.. (\d\d\d) (.+)$/m', $headers, $regs))
         {
@@ -404,13 +405,13 @@ class Am_LicenseChecker
             $errormessage = $regs[2];
         }
         fclose($f);
-        return array($body,$status,$errormessage);
+        return [$body,$status,$errormessage];
     }
     function openUrlCurl($method, $url, $params)
     {
         $status = 500; $errormessage = "connection failed"; $body = "";
-        if (!function_exists('curl_init')) return 
-            array($body, $status, $errormessage);
+        if (!function_exists('curl_init')) return
+            [$body, $status, $errormessage];
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -418,29 +419,30 @@ class Am_LicenseChecker
         {
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-type: application/x-www-form-urlencoded"]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
         } else {
             curl_setopt($ch, CURLOPT_URL, $url . '?' . http_build_query($params));
         }
         if (($body = curl_exec($ch)) === false)
         {
-            return array($body, $status, curl_errno($ch) . ':' . curl_error($ch));
+            return [$status, $body, curl_errno($ch) . ':' . curl_error($ch)];
         }
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        return array($body, $status, '');
+        return [$status, $body, ''];
     }
     function openUrlFopen($method, $url, $params)
     {
         $status = 500; $errormessage = "connection failed"; $body = "";
-        $options = array();
+        $options = [];
         if (!strcasecmp($method, 'post'))
         {
-            $options['http'] = array(
+            $options['http'] = [
                 'method' => 'POST',
-                'header' => "Connection: close\r\n".    
+                'header' => "Connection: close\r\n".
                             "Content-Type: application/x-www-form-urlencoded\r\n",
                 'content' => http_build_query($params),
-            );
+            ];
         } else {
             $url .= '?' . http_build_query($params);
         }
@@ -452,15 +454,15 @@ class Am_LicenseChecker
             {
                 $status = $regs[1];
                 $errormessage = $regs[2];
-                if ($status != 200) 
-                    return array($body,$status,$errormessage);
+                if ($status != 200)
+                    return [$body,$status,$errormessage];
             }
         }
         if (!$f)
-            return array($body, $status, $errormessage);
+            return [$body, $status, $errormessage];
         $body = stream_get_contents($f);
         fclose($f);
-        return array($body,$status,$errormessage);
+        return [$body,$status,$errormessage];
     }
 }
 
@@ -471,11 +473,11 @@ class Am_LicenseChecker_ActivationResponse
     public $activation_code;
     public $scheme_id;
     public $license_expires;
-    
+
     public $next_check;
     public $return;
     public $first_failed;
-    
+
     function __construct($response = null)
     {
         if ($response)
@@ -493,7 +495,7 @@ class Am_LicenseChecker_ActivationResponse
  *
  * Modified by alex@cgi-central.net : class renamed to avoid conflicts,
  *   PEAR error handling changed to exceptions
- * 
+ *
  * LICENSE: This source file is subject to version 3.0 of the PHP license
  * that is available through the world-wide-web at the following URI:
  * http://www.php.net/license/3_0.txt.  If you did not receive a copy of
@@ -511,18 +513,24 @@ class Am_LicenseChecker_ActivationResponse
 
 class Am_Crypt_Blowfish
 {
-    var $_P = array();
-    var $_S = array();
+    var $_P = [];
+    var $_S = [];
     var $_td = null;
     var $_iv = null;
+
+
     function __construct($key)
     {
-        if (extension_loaded('mcrypt')) {
+        if ($this->useMcrypt) {
             $this->_td = mcrypt_module_open(MCRYPT_BLOWFISH, '', 'ecb', '');
             $this->_iv = mcrypt_create_iv(8, MCRYPT_RAND);
         }
         $this->setKey($key);
     }
+	
+    function useMcrypt(){ 
+		return false; //extension_loaded('mcrypt'); 
+	}
     function isReady()
     {
         return true;
@@ -563,8 +571,8 @@ class Am_Crypt_Blowfish
         $Xr = $Xl ^ $this->_P[1];
         $Xl = $temp ^ $this->_P[0];
     }
-    
-    
+
+
     /**
      * Encrypts a string
      *
@@ -578,7 +586,7 @@ class Am_Crypt_Blowfish
             $this->raiseError('Plain text must be a string');
         }
 
-        if (extension_loaded('mcrypt')) {
+        if ($this->useMcrypt) {
             return mcrypt_generic($this->_td, $plainText);
         }
 
@@ -598,7 +606,7 @@ class Am_Crypt_Blowfish
             $this->raiseError('Chiper text must be a string');
         }
 
-        if (extension_loaded('mcrypt')) {
+        if ($this->useMcrypt) {
             return mdecrypt_generic($this->_td, $cipherText);
         }
 
@@ -624,18 +632,18 @@ class Am_Crypt_Blowfish
             $this->raiseError('Key must be less than 56 characters and non-zero. Supplied key length: ' . $len);
         }
 
-        if (extension_loaded('mcrypt')) {
+        if ($this->useMcrypt) {
             mcrypt_generic_init($this->_td, $key, $this->_iv);
             return true;
         }
 
         $this->_init();
-        
+
         $k = 0;
         $data = 0;
         $datal = 0;
         $datar = 0;
-        
+
         for ($i = 0; $i < 18; $i++) {
             $data = 0;
             for ($j = 4; $j > 0; $j--) {
@@ -644,7 +652,7 @@ class Am_Crypt_Blowfish
             }
             $this->_P[$i] ^= $data;
         }
-        
+
         for ($i = 0; $i <= 16; $i += 2) {
             $this->_encipher($datal, $datar);
             $this->_P[$i] = $datal;
@@ -680,22 +688,22 @@ class Am_Crypt_Blowfish
 
 class Am_Crypt_Blowfish_DefaultKey
 {
-    var $P = array();
-    
-    var $S = array();
-    
+    var $P = [];
+
+    var $S = [];
+
     function __construct()
     {
-        $this->P = array(
+        $this->P = [
             0x243F6A88, 0x85A308D3, 0x13198A2E, 0x03707344,
             0xA4093822, 0x299F31D0, 0x082EFA98, 0xEC4E6C89,
             0x452821E6, 0x38D01377, 0xBE5466CF, 0x34E90C6C,
             0xC0AC29B7, 0xC97C50DD, 0x3F84D5B5, 0xB5470917,
             0x9216D5D9, 0x8979FB1B
-        );
-        
-        $this->S = array(
-            array(
+        ];
+
+        $this->S = [
+            [
                 0xD1310BA6, 0x98DFB5AC, 0x2FFD72DB, 0xD01ADFB7,
                 0xB8E1AFED, 0x6A267E96, 0xBA7C9045, 0xF12C7F99,
                 0x24A19947, 0xB3916CF7, 0x0801F2E2, 0x858EFC16,
@@ -760,8 +768,8 @@ class Am_Crypt_Blowfish_DefaultKey
                 0x08BA6FB5, 0x571BE91F, 0xF296EC6B, 0x2A0DD915,
                 0xB6636521, 0xE7B9F9B6, 0xFF34052E, 0xC5855664,
                 0x53B02D5D, 0xA99F8FA1, 0x08BA4799, 0x6E85076A
-            ),
-            array(
+            ],
+            [
                 0x4B7A70E9, 0xB5B32944, 0xDB75092E, 0xC4192623,
                 0xAD6EA6B0, 0x49A7DF7D, 0x9CEE60B8, 0x8FEDB266,
                 0xECAA8C71, 0x699A17FF, 0x5664526C, 0xC2B19EE1,
@@ -826,8 +834,8 @@ class Am_Crypt_Blowfish_DefaultKey
                 0xDB73DBD3, 0x105588CD, 0x675FDA79, 0xE3674340,
                 0xC5C43465, 0x713E38D8, 0x3D28F89E, 0xF16DFF20,
                 0x153E21E7, 0x8FB03D4A, 0xE6E39F2B, 0xDB83ADF7
-            ),
-            array(
+            ],
+            [
                 0xE93D5A68, 0x948140F7, 0xF64C261C, 0x94692934,
                 0x411520F7, 0x7602D4F7, 0xBCF46B2E, 0xD4A20068,
                 0xD4082471, 0x3320F46A, 0x43B7D4B7, 0x500061AF,
@@ -892,8 +900,8 @@ class Am_Crypt_Blowfish_DefaultKey
                 0x1E50EF5E, 0xB161E6F8, 0xA28514D9, 0x6C51133C,
                 0x6FD5C7E7, 0x56E14EC4, 0x362ABFCE, 0xDDC6C837,
                 0xD79A3234, 0x92638212, 0x670EFA8E, 0x406000E0
-            ),
-            array(
+            ],
+            [
                 0x3A39CE37, 0xD3FAF5CF, 0xABC27737, 0x5AC52D1B,
                 0x5CB0679E, 0x4FA33742, 0xD3822740, 0x99BC9BBE,
                 0xD5118E9D, 0xBF0F7315, 0xD62D1C7E, 0xC700C47B,
@@ -958,8 +966,8 @@ class Am_Crypt_Blowfish_DefaultKey
                 0x1948C25C, 0x02FB8A8C, 0x01C36AE4, 0xD6EBE1F9,
                 0x90D4F869, 0xA65CDEA0, 0x3F09252D, 0xC208E69F,
                 0xB74E6132, 0xCE77E25B, 0x578FDFE3, 0x3AC372E6
-            )
-        );
+            ]
+        ];
     }
-    
+
 }
