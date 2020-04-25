@@ -521,7 +521,7 @@ class Am_Crypt_Blowfish
 
     function __construct($key)
     {
-        if ($this->useMcrypt) {
+        if ($this->useMcrypt()) {
             $this->_td = mcrypt_module_open(MCRYPT_BLOWFISH, '', 'ecb', '');
             $this->_iv = mcrypt_create_iv(8, MCRYPT_RAND);
         }
@@ -586,7 +586,7 @@ class Am_Crypt_Blowfish
             $this->raiseError('Plain text must be a string');
         }
 
-        if ($this->useMcrypt) {
+        if ($this->useMcrypt()) {
             return mcrypt_generic($this->_td, $plainText);
         }
 
@@ -606,7 +606,7 @@ class Am_Crypt_Blowfish
             $this->raiseError('Chiper text must be a string');
         }
 
-        if ($this->useMcrypt) {
+        if ($this->useMcrypt()) {
             return mdecrypt_generic($this->_td, $cipherText);
         }
 
@@ -632,7 +632,7 @@ class Am_Crypt_Blowfish
             $this->raiseError('Key must be less than 56 characters and non-zero. Supplied key length: ' . $len);
         }
 
-        if ($this->useMcrypt) {
+        if ($this->useMcrypt()) {
             mcrypt_generic_init($this->_td, $key, $this->_iv);
             return true;
         }
