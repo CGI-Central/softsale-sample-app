@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 
 define('API_URL', 'http://alex.localhost.int/amember40/softsale/api');
 define('DATA_DIR', __DIR__ . '/data');
-define('RANDOM_KEY', 'da39a3ee5e6b4b0d3255bfef95601890afd80709'); //that is how activation cache will be encrypted - CHANGE IT!
+define('RANDOM_KEY', 'da39a3ee5e6b4b0d3255bfef95601890afd80709'); //this is how activation cache will be encrypted - CHANGE IT! (before change, emptify the activation-cache.txt content to avoid first time error)
 
 function askVerifyAndSaveLicenseKey()
 {
