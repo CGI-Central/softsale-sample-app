@@ -9,6 +9,7 @@ error_reporting(E_ALL);
 
 define('API_URL', 'http://alex.localhost.int/amember40/softsale/api');
 define('DATA_DIR', __DIR__ . '/data');
+define('RANDOM_KEY', 'da39a3ee5e6b4b0d3255bfef95601890afd80709'); //that is how activation cache will be encrypted - CHANGE IT!
 
 function askVerifyAndSaveLicenseKey()
 {
@@ -19,7 +20,7 @@ function askVerifyAndSaveLicenseKey()
     } else {
         $license_key = preg_replace('/[^A-Za-z0-9-_]/', '', trim($_POST['key'])); 
     }
-    $checker = new Am_LicenseChecker($license_key, API_URL);
+    $checker = new Am_LicenseChecker($license_key, API_URL, RANDOM_KEY, null);
     if (!$checker->checkLicenseKey()) // license key not confirmed by remote server
     {
         renderLicenseForm($checker->getMessage()); 
@@ -71,7 +72,7 @@ if (!strlen($license_key)) // we have no saved key? so we need to ask it and ver
 // now second, optional stage - check activation and binding of application
 $activation_cache = trim(file_get_contents(DATA_DIR . '/activation-cache.txt'));
 $prev_activation_cache = $activation_cache; // store previous value to detect change
-$checker = new Am_LicenseChecker($license_key, API_URL);
+$checker = new Am_LicenseChecker($license_key, API_URL, RANDOM_KEY, null);
 $ret = empty($activation_cache) ?
            $checker->activate($activation_cache) : // explictly bind license to new installation
            $checker->checkActivation($activation_cache); // just check activation for subscription expriation, etc.
