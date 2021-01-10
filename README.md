@@ -19,3 +19,8 @@ Optional SoftSale module allows aMember customers to sell software:
 Docs
 =
 https://docs.amember.com/docs/Softsale_HTTP_API
+
+
+Video
+=
+https://youtu.be/T-17cWVRPj4
