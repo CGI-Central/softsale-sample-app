@@ -14,3 +14,8 @@ Optional SoftSale module allows aMember customers to sell software:
  - set limited number of allowed software "re-activations"
  - re-distribute software files (+version history)
  - optionally (needs programming) you can encode user/license data into software files
+
+
+Docs
+=
+https://docs.amember.com/docs/Softsale_HTTP_API
