@@ -2,7 +2,7 @@
 /**
  * This class you may include into your PHP application to check licenses and
  * handle activations. 
- * 
+ *
  * @example
  *    // Script that handles user-submitted license key and makes activation
  *    // it is recommended to replace filesystem calls to database calls
@@ -15,21 +15,21 @@
  *        echo "Error #" . $checker->getCode() . ' : ' . $checker->getMessage() . "<br />";
  *        echo "<form method=get><input name=license_key><input type=submit></form></body></html>";
  *    }
- * 
+ *
  *     // Using activation and "call-home" functionality
  *     $checker = new Am_LicenseChecker(file_get_contents('license_key.php'));
  *     $local_activation_cache = file_get_contents('activation_cache.php');
  *     $checker->checkActivation($local_activation_cache);
  *     file_put_contents('activation_cache.php', $local_activation_cache);
  *     if ($checker->getCode() <= 0) {
- *          // OK, activation succesful or we are inside grace period 
+ *          // OK, activation succesful or we are inside grace period
  *     } else {
- *          // got problems 
+ *          // got problems
  *          echo "<html><body><h4>Activation Problem - is your subscription expired?</h4>";
  *          echo "Error #" . $checker->getCode() . ' : ' . $checker->getMessage() . "<br />";
  *     }
  */
-class Am_LicenseChecker 
+class Am_LicenseChecker
 {
     /** that is how activation cache will be encrypted - CHANGE IT! */
     private $_local_encryption_key = 'da39a3ee5e6b4b0d3255bfef95601890afd80709';
@@ -51,7 +51,7 @@ class Am_LicenseChecker
     const ERROR_NO_REACTIVATION_ALLOWED = 'no_reactivation_allowed';
     const ERROR_NO_RESPONSE = 'no_response';
     const ERROR_OTHER = 'other_error';
-    
+
     public $messages = array(
         self::OK => 'License OK',
         self::CONNECTION_ERROR => 'Could not connect to licensing server - please try again later',
@@ -82,7 +82,7 @@ class Am_LicenseChecker
     protected $call_home_days =  1 ;
     /** @var int grace period .. hours, 24 - default. if "call home" failed, allow to continue */
     protected $grace_period = 2;
-    /** @var array request_vars: set of 
+    /** @var array request_vars: set of
      *          'ip' : 'Server IP' : detected automatically by getServerIp() method
      *          'url' : 'Installation URL' : you must override getRootUrl() method to return it
      *          'domain' : 'Domain' : detected automatically by getDomain() method
@@ -102,25 +102,25 @@ class Am_LicenseChecker
     public $activation_response;
     /** @var array cache */
     protected $_request;
-    
+
     /**
      * Constructor
      * @param string $key license key value
      * @param string $url activation url
      */
-    public function __construct($key, $url) 
+    public function __construct($key, $url)
     {
         $this->key = $key;
         $this->url = $url;
     }
-    
+
     function setError($code, $message = null)
     {
         $this->code = $code;
         $this->message = $message !== null ? $message : $this->messages[$code];
         return $this;
     }
-    /** 
+    /**
      * Check license key against remote server
      * @return bool true of success
      * @see getCode()
@@ -128,16 +128,16 @@ class Am_LicenseChecker
      */
     function checkLicenseKey()
     {
-        $body = $this->makeRequest('GET', 'check-license', 
-                array( 'key' => $this->key,), 
+        $body = $this->makeRequest('GET', 'check-license',
+                array( 'key' => $this->key,),
                 self::LICENSE_SERVER_ERROR);
-        
+
         $this->license_response = $body;
         $this->setError($body->code);
 
         return $this->code === self::OK;
     }
-    
+
     /**
      * Activate license for this installation
      * @param string $activation_cache must be stored between requests
@@ -148,17 +148,17 @@ class Am_LicenseChecker
         $request = $this->getRequest();
 
         $this->activation_response = $this->processActivationResponse(
-                $this->makeRequest('POST', 'activate', 
-                array( 'key' => $this->key, 'request' => $request ), 
+                $this->makeRequest('POST', 'activate',
+                array( 'key' => $this->key, 'request' => $request ),
                 self::ACTIVATION_SERVER_ERROR));
         $activation_cache = $this->encodeResponse($this->activation_response);
         return ($this->code === self::OK);
     }
 
-    /** 
+    /**
      * Check license activation
      * you script need to store $activation_code string somewhere in database
-     * or text file - this variable contains encoded activation and "call home" 
+     * or text file - this variable contains encoded activation and "call home"
      * status
      * @return bool
      * @see getCode()
@@ -182,39 +182,39 @@ class Am_LicenseChecker
         $request = $this->getRequest();
         $ret = false;
         $this->activation_response = $this->processActivationResponse(
-                $this->makeRequest('POST', 'check-activation', 
-                array( 'key' => $this->key, 'request' => $request ), 
+                $this->makeRequest('POST', 'check-activation',
+                array( 'key' => $this->key, 'request' => $request ),
                 self::ACTIVATION_SERVER_ERROR));
         $activation_cache = $this->encodeResponse($this->activation_response);
         return $this->activation_response->return;
     }
-    
-    
+
+
     /**
      * De-activates current installation - frees up license activation
-     * to make new activation somewhere else 
-     * 
+     * to make new activation somewhere else
+     *
      * Server will check if "reactivations" limit is not over
-     * 
+     *
      * Software will stop working on current location
      */
     function deactivate(& $activation_cache)
     {
         $request = $this->getRequest();
 
-        $body = $this->makeRequest('POST', 'deactivate', 
-                array( 'key' => $this->key, 'request' => $request, ), 
+        $body = $this->makeRequest('POST', 'deactivate',
+                array( 'key' => $this->key, 'request' => $request, ),
                 self::ACTIVATION_SERVER_ERROR);
         $activation_cache = null;
         return ($this->code === self::OK);
     }
-    
+
     /** @return string last error message */
     function getMessage()
     {
         return $this->message;
     }
-    
+
     /** @return code last error code */
     function getCode()
     {
@@ -252,7 +252,7 @@ class Am_LicenseChecker
         $response->request = $this->getRequest();
         $response->return = $resp->code == self::OK;
         if ($this->call_home_days > 0)
-            $response->next_check = min($response->next_check, 
+            $response->next_check = min($response->next_check,
                     $this->call_home_days * 3600 * 24);
         switch ($response->code)
         {
@@ -260,7 +260,7 @@ class Am_LicenseChecker
                 break;
             case self::ACTIVATION_SERVER_ERROR:;
             case self::CONNECTION_ERROR:;
-                $response->first_failed = empty($this->activation_response->first_failed) ? 
+                $response->first_failed = empty($this->activation_response->first_failed) ?
                     $this->time() : $this->activation_response->first_failed;
                 if ($response->first_failed < $this->grace_period * 3600)
                 {
@@ -279,7 +279,7 @@ class Am_LicenseChecker
         $response->next_check += $this->time();
         return $response;
     }
-    
+
     /** @return array($body,$status,$errormessage) */
     function openUrl($method, $url, array $params = array())
     {
@@ -294,11 +294,11 @@ class Am_LicenseChecker
         }
         return array(null, 600, 'Could not fetch URL');
     }
-    
+
     private function decodeResponse($response)
     {
         $ret = new Am_LicenseChecker_ActivationResponse;
-        if (empty($response)) 
+        if (empty($response))
             return $ret;
         $c = new Am_Crypt_Blowfish($this->_local_encryption_key);
         try {
@@ -322,7 +322,7 @@ class Am_LicenseChecker
         }
         return base64_encode($ret);
     }
-    
+
     public function time() { return time(); }
     public function getRequest()
     {
@@ -342,7 +342,7 @@ class Am_LicenseChecker
         $this->_request = $ret;
         return $ret;
     }
-    
+
     public function getHardwareId()
     {
         throw new Exception(__METHOD__ . " not implemented - must be implemented by software author");
@@ -363,14 +363,14 @@ class Am_LicenseChecker
     {
         return $_SERVER['HTTP_HOST'];
     }
-    
+
     function openUrlFsockopen($method, $url, $params)
     {
         $status = 500; $errormessage = "connection failed"; $body = "";
         $url_parts = parse_url($url);
         if ($url_parts['scheme'] == 'https')
             $f = fsockopen('ssl://'. $url_parts['host'], 443);
-        else 
+        else
             $f = fsockopen("tcp://" . $url_parts['host'], 80);
         if (!$f)
             return array($body, $status, $errormessage);
@@ -409,7 +409,7 @@ class Am_LicenseChecker
     function openUrlCurl($method, $url, $params)
     {
         $status = 500; $errormessage = "connection failed"; $body = "";
-        if (!function_exists('curl_init')) return 
+        if (!function_exists('curl_init')) return
             array($body, $status, $errormessage);
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -437,7 +437,7 @@ class Am_LicenseChecker
         {
             $options['http'] = array(
                 'method' => 'POST',
-                'header' => "Connection: close\r\n".    
+                'header' => "Connection: close\r\n".
                             "Content-Type: application/x-www-form-urlencoded\r\n",
                 'content' => http_build_query($params),
             );
@@ -452,7 +452,7 @@ class Am_LicenseChecker
             {
                 $status = $regs[1];
                 $errormessage = $regs[2];
-                if ($status != 200) 
+                if ($status != 200)
                     return array($body,$status,$errormessage);
             }
         }
@@ -471,11 +471,11 @@ class Am_LicenseChecker_ActivationResponse
     public $activation_code;
     public $scheme_id;
     public $license_expires;
-    
+
     public $next_check;
     public $return;
     public $first_failed;
-    
+
     function __construct($response = null)
     {
         if ($response)
@@ -493,7 +493,7 @@ class Am_LicenseChecker_ActivationResponse
  *
  * Modified by alex@cgi-central.net : class renamed to avoid conflicts,
  *   PEAR error handling changed to exceptions
- * 
+ *
  * LICENSE: This source file is subject to version 3.0 of the PHP license
  * that is available through the world-wide-web at the following URI:
  * http://www.php.net/license/3_0.txt.  If you did not receive a copy of
@@ -563,8 +563,8 @@ class Am_Crypt_Blowfish
         $Xr = $Xl ^ $this->_P[1];
         $Xl = $temp ^ $this->_P[0];
     }
-    
-    
+
+
     /**
      * Encrypts a string
      *
@@ -630,21 +630,21 @@ class Am_Crypt_Blowfish
         }
 
         $this->_init();
-        
+
         $k = 0;
         $data = 0;
         $datal = 0;
         $datar = 0;
-        
+
         for ($i = 0; $i < 18; $i++) {
             $data = 0;
             for ($j = 4; $j > 0; $j--) {
-                    $data = $data << 8 | ord($key{$k});
+                    $data = $data << 8 | ord($key[$k]);
                     $k = ($k+1) % $len;
             }
             $this->_P[$i] ^= $data;
         }
-        
+
         for ($i = 0; $i <= 16; $i += 2) {
             $this->_encipher($datal, $datar);
             $this->_P[$i] = $datal;
@@ -681,9 +681,9 @@ class Am_Crypt_Blowfish
 class Am_Crypt_Blowfish_DefaultKey
 {
     var $P = array();
-    
+
     var $S = array();
-    
+
     function __construct()
     {
         $this->P = array(
@@ -693,7 +693,7 @@ class Am_Crypt_Blowfish_DefaultKey
             0xC0AC29B7, 0xC97C50DD, 0x3F84D5B5, 0xB5470917,
             0x9216D5D9, 0x8979FB1B
         );
-        
+
         $this->S = array(
             array(
                 0xD1310BA6, 0x98DFB5AC, 0x2FFD72DB, 0xD01ADFB7,
@@ -961,5 +961,5 @@ class Am_Crypt_Blowfish_DefaultKey
             )
         );
     }
-    
+
 }
